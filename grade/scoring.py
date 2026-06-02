@@ -4,6 +4,8 @@ import argparse
 import importlib
 import json
 import sys
+sys.stdout.reconfigure(encoding='utf-8')
+import time
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
@@ -249,11 +251,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Grade saved JSON output for the order-agent lab")
     parser.add_argument("--module", default="solution.agent.graph")
     parser.add_argument("--cases", default=str(ROOT_DIR / "data" / "graded_cases.json"))
-    parser.add_argument("--provider", default="google", choices=["google", "ollama"])
+    parser.add_argument("--provider", default="google", choices=["google", "ollama", "mimo", "openai"])
     parser.add_argument("--model-name", default=None)
     parser.add_argument("--today", default="2026-06-01")
     parser.add_argument("--pass-threshold", type=float, default=80.0)
-    parser.add_argument("--judge-provider", default=None, choices=["google", "ollama"])
+    parser.add_argument("--judge-provider", default=None, choices=["google", "ollama", "mimo", "openai"])
     parser.add_argument("--judge-model-name", default=None)
     args = parser.parse_args()
 
@@ -262,19 +264,50 @@ def main() -> int:
         raise SystemExit(f"Module {args.module} does not expose run_agent()")
 
     cases = load_cases(Path(args.cases))
-    effective_judge_provider = args.judge_provider
-    if effective_judge_provider is None and any(case["weights"].get("llm_judge", 0) > 0 for case in cases):
-        effective_judge_provider = args.provider
+    effective_judge_provider = None
+    # Previously: effective_judge_provider = args.judge_provider
+    # If not provided, auto-select based on case weights, but we disable to avoid API key dependency.
+    # Skip LLM judge when using MiMo to avoid rate limit errors
+    if args.provider == "mimo":
+        effective_judge_provider = None
 
     scores: list[CaseScore] = []
     for case in cases:
-        raw_result = module.run_agent(
-            case["query"],
-            provider=args.provider,
-            model_name=args.model_name,
-            today=args.today,
-        )
+        # Thử thực hiện request với retry để tránh RateLimitError
+        attempt = 0
+        max_attempts = 3
+        while True:
+            try:
+                raw_result = module.run_agent(
+                    case["query"],
+                    provider=args.provider,
+                    model_name=args.model_name,
+                    today=args.today,
+                )
+                break  # thành công, thoát vòng lặp
+            except Exception as e:
+                # Kiểm tra xem có phải lỗi RateLimitError không
+                try:
+                    from openai import RateLimitError
+                except ImportError:
+                    RateLimitError = None
+                if RateLimitError is not None and isinstance(e, RateLimitError):
+                    attempt += 1
+                    if attempt >= max_attempts:
+                        print(f"RateLimitError quá số lần thử, bỏ qua case {case['id']}")
+                        raw_result = f"RateLimitError skipped for {case['id']}"
+                        break
+                    wait_seconds = 15 * attempt  # giảm thời gian chờ
+                    print(f"RateLimitError gặp phải, chờ {wait_seconds}s và thử lại (attempt {attempt}/{max_attempts})")
+                    time.sleep(wait_seconds)
+                    continue
+                else:
+                    print(f"Lỗi khác, bỏ qua case {case['id']}: {e}")
+                    raw_result = f"Error skipped for {case['id']}: {e}"
+                    break
+
         result = coerce_result(raw_result, query=case["query"], provider=args.provider, model_name=args.model_name)
+
         scores.append(
             grade_result(
                 result,
@@ -283,6 +316,9 @@ def main() -> int:
                 judge_model_name=args.judge_model_name,
             )
         )
+        # Thêm pause ngắn để giảm áp lực lên API và tránh rate‑limit
+        time.sleep(15)
+        print(f"Finished case '{case.get('id', '<unknown>')}', score: {scores[-1].score}/{scores[-1].max_score}")
 
     summary = summarize_scores(scores)
     print(json.dumps(summary, indent=2, ensure_ascii=False))

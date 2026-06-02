@@ -48,7 +48,26 @@ def build_chat_model(
             base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
             temperature=temperature,
         )
-    raise ValueError("This lab supports only the `google` and `ollama` providers.")
+    if provider == "mimo":
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            model=model_name or os.getenv("DEFAULT_MODEL", "mimo-v2.5-pro"),
+            temperature=temperature,
+            api_key=os.getenv("MIMO_API_KEY"),
+            base_url="https://token-plan-sgp.xiaomimimo.com/v1",
+            max_retries=5,
+            request_timeout=60,
+        )
+    if provider == "openai":
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            model=model_name or os.getenv("LLM_MODEL", "gpt-4o-mini"),
+            temperature=temperature,
+            api_key=os.getenv("OPENAI_API_KEY"),
+        )
+    raise ValueError("This lab supports only the `google`, `ollama`, `mimo` and `openai` providers.")
 
 
 def extract_json_object(raw: Any) -> dict[str, Any]:
@@ -72,6 +91,20 @@ def judge_answer_with_llm(
     provider: str,
     model_name: str | None = None,
 ) -> dict[str, Any]:
+    # Verify required API key for the chosen provider
+    required_key = {
+        "google": "GOOGLE_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "mimo": "MIMO_API_KEY",
+        "ollama": None,  # Ollama runs locally, no key needed
+    }.get(provider)
+    if required_key and not os.getenv(required_key):
+        # Return a default grading result when the API key is unavailable.
+        return {
+            "score": 0,
+            "verdict": "Missing API key",
+            "feedback": [f"Environment variable {required_key} is not set; unable to invoke LLM for grading."],
+        }
     model = build_chat_model(provider=provider, model_name=model_name, temperature=0.0)
     prompt = f"""
 You are grading a student order-agent answer.

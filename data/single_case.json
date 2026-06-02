@@ -1,0 +1,24 @@
+[
+  {
+    "id": "gaming_bundle_exact_match",
+    "category": "normal",
+    "query": "Tạo đơn hàng cho Nguyễn Lan Anh, số điện thoại 0901234567, email lananh@example.com, giao đến 18 Nguyễn Huệ, Quận 1, TP.HCM. Tôi cần 1 ASUS ROG Zephyrus G14, 2 Logitech Pebble 2 M350s và 1 LG UltraGear 27GP850-B.",
+    "expected": {
+      "expect_saved_order": true,
+      "expected_order_file": "data/expected_orders/gaming_bundle_exact_match.json",
+      "required_tools": [
+        "list_products",
+        "get_product_details",
+        "get_discount",
+        "calculate_order_totals",
+        "save_order"
+      ],
+      "grading_rubric": "Reward concise Vietnamese confirmations that mention the saved order id, discount, final total, and save location."
+    },
+    "weights": {
+      "json_output": 70,
+      "tools": 20,
+      "llm_judge": 10
+    }
+  }
+]

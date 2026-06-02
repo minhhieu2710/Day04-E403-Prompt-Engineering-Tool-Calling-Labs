@@ -1,0 +1,36 @@
+{
+  "order_id": "ORD-CE1FB2761E",
+  "created_at": "2026-06-01",
+  "status": "confirmed",
+  "customer": {
+    "name": "Lâm Gia Bảo",
+    "phone": "",
+    "email": "",
+    "shipping_address": "22 Pasteur, Quận 3, TP.HCM"
+  },
+  "items": [
+    {
+      "product_id": "HD-001",
+      "sku": "SNY-WH1000XM5",
+      "name": "Sony WH-1000XM5",
+      "category": "headphone",
+      "quantity": 9,
+      "unit_price": 7990000,
+      "line_total": 71910000
+    }
+  ],
+  "pricing": {
+    "currency": "VND",
+    "subtotal": 71910000,
+    "discount_rate": 0.2,
+    "discount_amount": 14382000,
+    "final_total": 57528000
+  },
+  "discount": {
+    "campaign_code": "FLASH-20",
+    "customer_tier": "standard"
+  },
+  "notes": "",
+  "save_path": "artifacts\\orders\\ORD-CE1FB2761E.json",
+  "source": "llm-order-agent"
+}

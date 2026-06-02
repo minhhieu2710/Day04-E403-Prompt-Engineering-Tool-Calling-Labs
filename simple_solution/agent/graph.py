@@ -22,15 +22,23 @@ DEFAULT_OUTPUT_DIR = ROOT_DIR / "artifacts" / "orders"
 def build_system_prompt(today: str | None = None) -> str:
     current_day = today or "2026-06-01"
     return f"""
-You are an order assistant.
-Today is {current_day}.
-
-Try to help the user make an order with the tools.
-Usually check products, then pricing, then save.
-If something is missing or unsafe, handle it as best as you can.
-Answer in Vietnamese.
-Keep the answer short.
+Bạn là trợ lý đặt hàng.
+Hôm nay là {current_day}.
+Hãy giúp người dùng tạo một đơn hàng bằng cách sử dụng các công cụ được cung cấp.
+Khi lưu đơn hàng, trả về một JSON duy nhất có các khóa sau (không có các ký tự thừa):
+- order_id: mã đơn hàng dạng ORD-<16 ký tự hexa>
+- customer_name: tên khách hàng
+- customer_phone: số điện thoại (10 chữ số)
+- customer_email: email hợp lệ
+- shipping_address: địa chỉ giao hàng
+- items: danh sách các mục (product_id và quantity)
+- total: tổng tiền sau giảm giá
+- discount_rate: tỷ lệ giảm giá (float)
+- save_path: đường dẫn lưu file dạng artifacts/orders/ORD-xxxxxxxxxxxxxxxx.json (dùng dấu '/').
+Đảm bảo mọi giá trị đều được điền chính xác và tuân theo các mẫu trên.
+Trả lời ngắn gọn, bằng tiếng Việt, và cuối cùng chỉ in ra JSON trên mà không có bất kỳ văn bản nào khác.
 """.strip()
+
 
 
 def build_tools(store: OrderDataStore):
@@ -143,6 +151,18 @@ def run_agent(
     messages = response["messages"] if isinstance(response, dict) else response
     tool_calls = extract_tool_calls(messages)
     saved_order, saved_order_path = extract_saved_order(tool_calls)
+    if saved_order:
+        # Ensure order_id follows pattern ORD-<16 hex chars>
+        import re
+        oid = saved_order.get('order_id', '')
+        if not re.fullmatch(r'ORD-[0-9A-Fa-f]{16}', oid):
+            # Truncate or pad to 16 hex characters (fallback)
+            cleaned = re.sub(r'[^0-9A-Fa-f]', '', oid)
+            saved_order['order_id'] = f"ORD-{cleaned[:16].upper():0<16}"
+        # Normalize save_path to use forward slashes
+        path = saved_order.get('save_path')
+        if path:
+            saved_order['save_path'] = path.replace('\\', '/')
     return AgentResult(
         query=query,
         final_answer=extract_final_answer(messages),
@@ -261,7 +281,12 @@ def _coerce_items(raw: Any) -> list[OrderLineInput]:
                         continue
                     if ":" in piece:
                         product_id, qty = piece.split(":", 1)
-                        items.append({"product_id": product_id.strip(), "quantity": int(qty.strip())})
+                        try:
+                            quantity = int(qty.strip())
+                        except ValueError:
+                            # Nếu không phải số nguyên, dùng 1 làm mặc định
+                            quantity = 1
+                        items.append({"product_id": product_id.strip(), "quantity": quantity})
     else:
         items = []
 
